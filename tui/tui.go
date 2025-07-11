@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	//"strings"
-
 	"github.com/charmbracelet/bubbles/filepicker"
 	"github.com/charmbracelet/lipgloss"
 
@@ -161,25 +159,30 @@ func (m *Model) testPageInit() tea.Cmd {
 }
 
 func (m Model) updateViewText() string {
-	// Update in chunks -> init: whole text is untyped style (set as whole not character-by-character)
-	// decide styling based on m.inputText.Value()
-	// anything not in it: untypedStyle,
-	// decide style of last character i.e. x = len(m.inputText.Value()); m.inputText.Value()[x - 1]
-	// while it is the same as the previous character
 	inputText := m.inputText.Value()
 	fileText := m.fileText
-	var style lipgloss.Style = wrongStyle
 	viewText := ""
-	for i := range inputText {
-		if inputText[i] == fileText[i] {
-			style = correctStyle
+	currentSection := ""
+	currentStyle := lipgloss.NewStyle().Foreground(lipgloss.NoColor{})
+	var updateSection = func(s lipgloss.Style, idx int) {
+		if s.GetForeground() == currentStyle.GetForeground() {
+			currentSection += string(fileText[idx])
 		} else {
-			style = wrongStyle
+			viewText += currentStyle.Render(currentSection)
+			currentSection = string(fileText[idx])
+			currentStyle = s
 		}
-		viewText += style.Render(string(fileText[i]))
 	}
 
+	for i := range inputText {
+		if inputText[i] == fileText[i] {
+			updateSection(correctStyle, i)
+		} else {
+			updateSection(wrongStyle, i)
+		}
+	}
+	viewText += currentStyle.Render(currentSection)
 	viewText += untypedStyle.Render(fileText[len(inputText):])
-	return viewText + "\n" + "file length: " + fmt.Sprint(len(fileText)) + "\n\nvisible input length: " + 
+	return viewText + "\n" + "file length: " + fmt.Sprint(len(fileText)) + "\n\nvisible input length: " +
 		fmt.Sprint(len(inputText)) + "\n\ntotal input length: " + fmt.Sprint(len(viewText))
 }

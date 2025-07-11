@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	//"strings"
+
 	"github.com/charmbracelet/bubbles/filepicker"
 	"github.com/charmbracelet/lipgloss"
 
@@ -28,11 +30,6 @@ type Model struct {
 	//timer timer.Model
 }
 
-// testPage:
-// screen always displays the same text -> each individual characters color is decided independently
-// not typed yet: grey, typed incorrectly: red, typed correctly: green
-
-// when len(inputText) == len(fileText) -> end the test -> display stats
 var (
 	untypedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	correctStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
@@ -44,6 +41,7 @@ func initialModel() (Model, error) {
 	m := Model{}
 	m.page = fileMenu
 	m.filePicker = filepicker.New()
+	m.filePicker.SetHeight(0)
 	m.filePicker.ShowHidden = false
 	m.filePicker.ShowSize = true
 	m.filePicker.ShowPermissions = false
@@ -55,12 +53,9 @@ func initialModel() (Model, error) {
 	//m.filePicker.CurrentDirectory = filepath.Dir(exePath)
 	currentDirectory, err := filepath.Abs("./")
 	if err != nil {
-		fmt.Println(err.Error())
-	} else {
-		m.filePicker.CurrentDirectory = currentDirectory
-		fmt.Println(m.filePicker.CurrentDirectory)
+		return Model{}, nil
 	}
-
+	m.filePicker.CurrentDirectory = currentDirectory
 	return m, nil
 }
 
@@ -108,9 +103,7 @@ func (m Model) View() string {
 		view += m.filePicker.View()
 	case testPage:
 		view = "typing test page" + "\n\n"
-		view += fitStyle.Render(m.viewText)
-		view += "\n\n"
-		view += m.inputText.Value()
+		view += fitStyle.Render(m.viewText) + "\n"
 	}
 	return title + "\n\n" + view
 }
@@ -156,28 +149,37 @@ func (m *Model) testPageInit() tea.Cmd {
 	text, err := os.ReadFile(m.selectedFile)
 	if err != nil {
 		m.fileText = ""
+		m.viewText = ""
 	} else {
 		m.fileText = string(text)
+		m.viewText = untypedStyle.Render(string(text))
 	}
 	inputText := textinput.New()
+	inputText.CharLimit = len(m.fileText)
 	m.inputText = inputText
 	return m.inputText.Focus()
 }
 
 func (m Model) updateViewText() string {
+	// Update in chunks -> init: whole text is untyped style (set as whole not character-by-character)
+	// decide styling based on m.inputText.Value()
+	// anything not in it: untypedStyle,
+	// decide style of last character i.e. x = len(m.inputText.Value()); m.inputText.Value()[x - 1]
+	// while it is the same as the previous character
 	inputText := m.inputText.Value()
 	fileText := m.fileText
+	var style lipgloss.Style = wrongStyle
 	viewText := ""
-	var style lipgloss.Style
-	for i := range fileText {
-		if i >= len(inputText) {
-			style = untypedStyle
-		} else if inputText[i] == fileText[i] {
+	for i := range inputText {
+		if inputText[i] == fileText[i] {
 			style = correctStyle
 		} else {
 			style = wrongStyle
 		}
 		viewText += style.Render(string(fileText[i]))
 	}
-	return viewText
+
+	viewText += untypedStyle.Render(fileText[len(inputText):])
+	return viewText + "\n" + "file length: " + fmt.Sprint(len(fileText)) + "\n\nvisible input length: " + 
+		fmt.Sprint(len(inputText)) + "\n\ntotal input length: " + fmt.Sprint(len(viewText))
 }

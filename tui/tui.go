@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 
 	"github.com/charmbracelet/bubbles/filepicker"
+	"github.com/charmbracelet/lipgloss"
 
-	//"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textinput"
 	//"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -22,10 +23,22 @@ type Model struct {
 	filePicker   filepicker.Model
 	selectedFile string
 	fileText     string
-	err          error
-	//inputText textinput.Model
+	inputText    textinput.Model
+	viewText     string
 	//timer timer.Model
 }
+
+// testPage:
+// screen always displays the same text -> each individual characters color is decided independently
+// not typed yet: grey, typed incorrectly: red, typed correctly: green
+
+// when len(inputText) == len(fileText) -> end the test -> display stats
+var (
+	untypedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	correctStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	wrongStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	fitStyle     = lipgloss.NewStyle().Width(100)
+)
 
 func initialModel() (Model, error) {
 	m := Model{}
@@ -78,7 +91,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			keyCmd = m.testPageKeyHandler(msg.String())
 		}
 	}
-	cmds = append(cmds, cmd, keyCmd)
+	var inputCmd tea.Cmd
+	m.inputText, inputCmd = m.inputText.Update(msg)
+	m.viewText = m.updateViewText()
+	cmds = append(cmds, cmd, keyCmd, inputCmd)
 	return m, tea.Batch(cmds...)
 }
 
@@ -92,7 +108,9 @@ func (m Model) View() string {
 		view += m.filePicker.View()
 	case testPage:
 		view = "typing test page" + "\n\n"
-		view += m.fileText
+		view += fitStyle.Render(m.viewText)
+		view += "\n\n"
+		view += m.inputText.Value()
 	}
 	return title + "\n\n" + view
 }
@@ -109,17 +127,19 @@ func Run() error {
 
 func (m *Model) fileMenuKeyHandler(msg string, didSelect bool) tea.Cmd {
 	var cmd tea.Cmd
+	var cmds []tea.Cmd
 	m.filePicker, cmd = m.filePicker.Update(msg)
+	cmds = append(cmds, cmd)
 	switch msg {
 	case "ctrl+c":
 		return tea.Quit
 	case "enter":
 		if didSelect {
-			m.err = m.testPageInit()
+			cmds = append(cmds, m.testPageInit())
 			m.page = testPage
 		}
 	}
-	return cmd
+	return tea.Batch(cmds...)
 }
 
 func (m *Model) testPageKeyHandler(msg string) tea.Cmd {
@@ -132,21 +152,32 @@ func (m *Model) testPageKeyHandler(msg string) tea.Cmd {
 	return nil
 }
 
-func (m *Model) testPageInit() error {
+func (m *Model) testPageInit() tea.Cmd {
 	text, err := os.ReadFile(m.selectedFile)
 	if err != nil {
-		return err
+		m.fileText = ""
+	} else {
+		m.fileText = string(text)
 	}
-	m.fileText = string(text)
-	return nil
+	inputText := textinput.New()
+	m.inputText = inputText
+	return m.inputText.Focus()
 }
 
-// fileMenu:
-// show file picker of all folders and text files
-// on enter go to testPage with file text content
-
-// testPage:
-// screen always displays the same text -> each individual characters color is decided independently
-// not typed yet: grey, typed incorrectly: red, typed correctly: green
-
-// when len(inputText) == len(fileText) -> end the test -> display stats
+func (m Model) updateViewText() string {
+	inputText := m.inputText.Value()
+	fileText := m.fileText
+	viewText := ""
+	var style lipgloss.Style
+	for i := range fileText {
+		if i >= len(inputText) {
+			style = untypedStyle
+		} else if inputText[i] == fileText[i] {
+			style = correctStyle
+		} else {
+			style = wrongStyle
+		}
+		viewText += style.Render(string(fileText[i]))
+	}
+	return viewText
+}

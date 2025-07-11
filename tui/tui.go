@@ -16,15 +16,23 @@ import (
 const (
 	fileMenu = iota
 	testPage
+	resultsPage
 )
 
 type Model struct {
-	page         int
-	filePicker   filepicker.Model
-	selectedFile string
-	fileText     string
-	inputText    textinput.Model
-	viewText     string
+	page          int
+	filePicker    filepicker.Model
+	selectedFile  string
+	fileText      string
+	inputText     textinput.Model
+	viewText      string
+	testPageStats struct {
+		totalCorrect            int
+		numAttempts             int
+		totalLengthCorrectWords int
+		numCorrectWords         int
+		totalTimeSeconds        int
+	}
 	//timer timer.Model
 }
 
@@ -44,6 +52,7 @@ func initialModel() (Model, error) {
 	m.filePicker.ShowSize = true
 	m.filePicker.ShowPermissions = false
 	m.filePicker.AllowedTypes = []string{".txt", ".md"}
+
 	//exePath, err := os.Executable()
 	// if err != nil {
 	// 	return m, err
@@ -66,6 +75,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	var keyCmd tea.Cmd
 	var cmd tea.Cmd
+	var inputCmd tea.Cmd
 
 	switch m.page {
 	case fileMenu:
@@ -82,11 +92,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			keyCmd = m.testPageKeyHandler(msg.String())
+			old := m.inputText
+			m.inputText, inputCmd = m.inputText.Update(msg)
+			if len(m.inputText.Value()) > len(old.Value()) {
+				if input := m.inputText.Value(); input[len(input)-1] == m.fileText[len(input)-1] {
+					m.addAccuracyStats(1, 1)
+				} else {
+					m.addAccuracyStats(1, 0)
+				}
+			}
+			if len(m.inputText.Value()) == len(m.fileText) {
+				m.page = resultsPage
+				m.inputText.Blur()
+				// calculate speed
+			}
+			m.viewText = m.updateViewText()
+		}
+	case resultsPage:
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc":
+				m.page = fileMenu
+			}
 		}
 	}
-	var inputCmd tea.Cmd
-	m.inputText, inputCmd = m.inputText.Update(msg)
-	m.viewText = m.updateViewText()
 	cmds = append(cmds, cmd, keyCmd, inputCmd)
 	return m, tea.Batch(cmds...)
 }
@@ -102,6 +134,8 @@ func (m Model) View() string {
 	case testPage:
 		view = "typing test page" + "\n\n"
 		view += fitStyle.Render(m.viewText) + "\n"
+	case resultsPage:
+		view = "accuracy: " + fmt.Sprint(m.getAccuracy()) + "%"
 	}
 	return title + "\n\n" + view
 }
@@ -146,19 +180,23 @@ func (m *Model) testPageKeyHandler(msg string) tea.Cmd {
 func (m *Model) testPageInit() tea.Cmd {
 	text, err := os.ReadFile(m.selectedFile)
 	if err != nil {
-		m.fileText = ""
-		m.viewText = ""
-	} else {
-		m.fileText = string(text)
-		m.viewText = untypedStyle.Render(string(text))
+		panic("could not read file")
 	}
+	m.fileText = string(text)
+	m.viewText = untypedStyle.Render(string(text))
+	m.testPageStats.numAttempts = 0
+	m.testPageStats.numCorrectWords = 0
+	m.testPageStats.totalCorrect = 0
+	m.testPageStats.totalLengthCorrectWords = 0
+	m.testPageStats.totalTimeSeconds = 0
+
 	inputText := textinput.New()
 	inputText.CharLimit = len(m.fileText)
 	m.inputText = inputText
 	return m.inputText.Focus()
 }
 
-func (m Model) updateViewText() string {
+func (m *Model) updateViewText() string {
 	inputText := m.inputText.Value()
 	fileText := m.fileText
 	viewText := ""
@@ -181,8 +219,24 @@ func (m Model) updateViewText() string {
 			updateSection(wrongStyle, i)
 		}
 	}
+
 	viewText += currentStyle.Render(currentSection)
 	viewText += untypedStyle.Render(fileText[len(inputText):])
 	return viewText + "\n" + "file length: " + fmt.Sprint(len(fileText)) + "\n\nvisible input length: " +
-		fmt.Sprint(len(inputText)) + "\n\ntotal input length: " + fmt.Sprint(len(viewText))
+		fmt.Sprint(len(inputText)) + "\n\ntotal input length: " + fmt.Sprint(len(viewText)) +
+		"\n\naccuracy: " + fmt.Sprint(m.getAccuracy()) + "%"
 }
+
+func (m *Model) addAccuracyStats(numAttemptsDelta int, totalCorrect int) {
+	m.testPageStats.numAttempts += numAttemptsDelta
+	m.testPageStats.totalCorrect += totalCorrect
+}
+
+func (m Model) getAccuracy() int {
+	return (m.testPageStats.totalCorrect * 100) / m.testPageStats.numAttempts
+}
+
+// speed: ((number of characters in correctly typed words + 1 for space after correct word) / 5) -> normalise to 60seconds
+// 	m.testPageStats.numCorrectWords = 0
+// 	m.testPageStats.totalLengthCorrectWords = 0
+// 	m.testPageStats.totalTimeSeconds = 0

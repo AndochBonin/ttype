@@ -3,9 +3,8 @@ package tui
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
-	"github.com/charmbracelet/bubbles/filepicker"
+	//"path/filepath"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -14,25 +13,24 @@ import (
 )
 
 const (
-	fileMenu = iota
-	testPage
+	testPage = iota
 	resultsPage
 )
 
 type Model struct {
-	page          int
-	filePicker    filepicker.Model
-	selectedFile  string
-	fileText      string
-	inputText     textinput.Model
-	viewText      string
-	testPageStats struct {
-		totalCorrect            int
-		numAttempts             int
-		totalLengthCorrectWords int
-		numCorrectWords         int
-		totalTimeSeconds        int
-	}
+	page      int
+	fileText  string
+	previousText string
+	inputText textinput.Model
+	viewText  string
+
+	totalCorrect            int
+	numAttempts             int
+	totalLengthCorrectWords int
+	stopBackspaceIdx        int
+	totalTimeSeconds        int
+	currentWord             string
+
 	//timer timer.Model
 }
 
@@ -45,30 +43,13 @@ var (
 
 func initialModel() (Model, error) {
 	m := Model{}
-	m.page = fileMenu
-	m.filePicker = filepicker.New()
-	m.filePicker.SetHeight(0)
-	m.filePicker.ShowHidden = false
-	m.filePicker.ShowSize = true
-	m.filePicker.ShowPermissions = false
-	m.filePicker.AllowedTypes = []string{".txt", ".md"}
-
-	//exePath, err := os.Executable()
-	// if err != nil {
-	// 	return m, err
-	// }
-	//m.filePicker.CurrentDirectory = filepath.Dir(exePath)
-	currentDirectory, err := filepath.Abs("./")
-	if err != nil {
-		return Model{}, nil
-	}
-	m.filePicker.CurrentDirectory = currentDirectory
+	m.page = testPage
+	m.testPageInit()
 	return m, nil
 }
 
 func (m Model) Init() tea.Cmd {
-
-	return tea.Batch(m.filePicker.Init(), tea.SetWindowTitle("ttype"))
+	return tea.SetWindowTitle("ttype")
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -76,37 +57,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var keyCmd tea.Cmd
 	var cmd tea.Cmd
 	var inputCmd tea.Cmd
-
 	switch m.page {
-	case fileMenu:
-		m.filePicker, cmd = m.filePicker.Update(msg)
-		didSelect, path := m.filePicker.DidSelectFile(msg)
-		if didSelect {
-			m.selectedFile = path
-		}
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			keyCmd = m.fileMenuKeyHandler(msg.String(), didSelect)
-		}
 	case testPage:
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
-			keyCmd = m.testPageKeyHandler(msg.String())
-			old := m.inputText
+			m.previousText = m.inputText.Value()
 			m.inputText, inputCmd = m.inputText.Update(msg)
-			if len(m.inputText.Value()) > len(old.Value()) {
-				if input := m.inputText.Value(); input[len(input)-1] == m.fileText[len(input)-1] {
-					m.addAccuracyStats(1, 1)
-				} else {
-					m.addAccuracyStats(1, 0)
-				}
-			}
-			if len(m.inputText.Value()) == len(m.fileText) {
-				m.page = resultsPage
-				m.inputText.Blur()
-				// calculate speed
-			}
-			m.viewText = m.updateViewText()
+			m, keyCmd = m.testPageKeyHandler(msg.String())
 		}
 	case resultsPage:
 		switch msg := msg.(type) {
@@ -115,7 +72,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				return m, tea.Quit
 			case "esc":
-				m.page = fileMenu
+				m.page = testPage
 			}
 		}
 	}
@@ -127,10 +84,6 @@ func (m Model) View() string {
 	title := "ttype"
 	var view string
 	switch m.page {
-	case fileMenu:
-		view = "selected: "
-		view += m.selectedFile + "\n\n"
-		view += m.filePicker.View()
 	case testPage:
 		view = "typing test page" + "\n\n"
 		view += fitStyle.Render(m.viewText) + "\n"
@@ -150,46 +103,39 @@ func Run() error {
 	return runErr
 }
 
-func (m *Model) fileMenuKeyHandler(msg string, didSelect bool) tea.Cmd {
-	var cmd tea.Cmd
-	var cmds []tea.Cmd
-	m.filePicker, cmd = m.filePicker.Update(msg)
-	cmds = append(cmds, cmd)
+func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 	switch msg {
 	case "ctrl+c":
-		return tea.Quit
-	case "enter":
-		if didSelect {
-			cmds = append(cmds, m.testPageInit())
-			m.page = testPage
+		return m, tea.Quit
+	}
+	var inputCmd tea.Cmd
+	if len(m.inputText.Value()) > len(m.previousText) {
+		if input := m.inputText.Value(); input[len(input)-1] == m.fileText[len(input)-1] {
+			m.addAccuracyStats(1, 1)
+		} else {
+			m.addAccuracyStats(1, 0)
 		}
 	}
-	return tea.Batch(cmds...)
-}
-
-func (m *Model) testPageKeyHandler(msg string) tea.Cmd {
-	switch msg {
-	case "ctrl+c":
-		return tea.Quit
-	case "esc":
-		m.page = fileMenu
+	if len(m.inputText.Value()) == len(m.fileText) {
+		m.page = resultsPage
+		m.inputText.Blur()
 	}
-	return nil
+	m.viewText = m.updateViewText()
+	return m, inputCmd
 }
 
 func (m *Model) testPageInit() tea.Cmd {
-	text, err := os.ReadFile(m.selectedFile)
+	text, err := os.ReadFile("./testFile.md")
 	if err != nil {
 		panic("could not read file")
 	}
 	m.fileText = string(text)
 	m.viewText = untypedStyle.Render(string(text))
-	m.testPageStats.numAttempts = 0
-	m.testPageStats.numCorrectWords = 0
-	m.testPageStats.totalCorrect = 0
-	m.testPageStats.totalLengthCorrectWords = 0
-	m.testPageStats.totalTimeSeconds = 0
-
+	m.numAttempts = 0
+	m.totalCorrect = 0
+	m.totalLengthCorrectWords = 0
+	m.totalTimeSeconds = 0
+	m.currentWord = ""
 	inputText := textinput.New()
 	inputText.CharLimit = len(m.fileText)
 	m.inputText = inputText
@@ -228,15 +174,40 @@ func (m *Model) updateViewText() string {
 }
 
 func (m *Model) addAccuracyStats(numAttemptsDelta int, totalCorrect int) {
-	m.testPageStats.numAttempts += numAttemptsDelta
-	m.testPageStats.totalCorrect += totalCorrect
+	m.numAttempts += numAttemptsDelta
+	m.totalCorrect += totalCorrect
 }
 
 func (m Model) getAccuracy() int {
-	return (m.testPageStats.totalCorrect * 100) / m.testPageStats.numAttempts
+	if m.numAttempts == 0 {
+		return 0
+	}
+	return (m.totalCorrect * 100) / m.numAttempts
 }
 
-// speed: ((number of characters in correctly typed words + 1 for space after correct word) / 5) -> normalise to 60seconds
-// 	m.testPageStats.numCorrectWords = 0
-// 	m.testPageStats.totalLengthCorrectWords = 0
-// 	m.testPageStats.totalTimeSeconds = 0
+func (m Model) getSpeed() int {
+	if m.totalTimeSeconds == 0 {
+		return 0
+	}
+	return (m.totalLengthCorrectWords / 5) * (60 / m.totalTimeSeconds)
+}
+
+// on space check:
+// was the last word (from the current position to position of last space / start of string) correct?
+// if so prevent backspace beyond this point
+// calculate speed
+// on backspace: getCurrentWordRange()
+
+func getWordStartIdx(text string) int {
+	i := len(text) - 1
+	if text[i] == ' ' { // ignore first space
+		i--
+	}
+	for i > 0 {
+		if text[i] == ' ' {
+			break
+		}
+		i--
+	}
+	return i
+}

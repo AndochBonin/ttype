@@ -38,10 +38,10 @@ var (
 	fitStyle     = lipgloss.NewStyle().Width(100)
 )
 
-func initialModel() (Model, error) {
+func initialModel(testDurationSeconds int) (Model, error) {
 	m := Model{}
 	m.page = testPage
-	//m.timer = timer.New(time.Second * time.Duration(m.totalTimeSeconds))
+	m.totalTimeSeconds = testDurationSeconds
 	m.testPageInit()
 	return m, nil
 }
@@ -109,8 +109,8 @@ func (m Model) View() string {
 	return title + "\n\n" + view
 }
 
-func Run() error {
-	m, initErr := initialModel()
+func Run(testDurationSeconds int) error {
+	m, initErr := initialModel(testDurationSeconds)
 	if initErr != nil {
 		return initErr
 	}
@@ -123,6 +123,8 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 	switch msg {
 	case "ctrl+c":
 		return m, tea.Quit
+	case "tab":
+		return m, m.testPageInit()
 	case "backspace":
 		if len(m.previousText.Value()) == m.stopBackspaceIdx {
 			m.inputText = m.previousText
@@ -181,7 +183,8 @@ func (m *Model) testPageInit() tea.Cmd {
 	inputText := textinput.New()
 	inputText.CharLimit = len(m.fileText)
 	m.inputText = inputText
-	m.totalTimeSeconds = 40 // make this a user input
+	m.previousText = inputText
+	m.stopBackspaceIdx = 0
 	m.timer = timer.New(time.Second * time.Duration(m.totalTimeSeconds))
 	return tea.Batch(m.inputText.Focus(), m.timer.Init())
 }

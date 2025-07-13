@@ -5,12 +5,10 @@ import (
 	"os"
 	"time"
 
-	//"path/filepath"
-	"github.com/charmbracelet/lipgloss"
-
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 const (
@@ -19,20 +17,18 @@ const (
 )
 
 type Model struct {
-	page         int
-	fileText     string
-	previousText textinput.Model
-	inputText    textinput.Model
-	viewText     string
-
+	page                    int
+	fileText                string
+	previousText            textinput.Model
+	inputText               textinput.Model
+	viewText                string
 	totalCorrect            int
 	numAttempts             int
 	totalLengthCorrectWords int
 	stopBackspaceIdx        int
 	totalTimeSeconds        int
 	currentWord             string
-
-	timer timer.Model
+	timer                   timer.Model
 }
 
 var (
@@ -78,6 +74,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, timerCmd
 		case timer.TimeoutMsg:
 			m.page = resultsPage
+			m.inputText.Blur()
 			m.viewText = m.updateViewText()
 			return m, nil
 		}
@@ -105,8 +102,8 @@ func (m Model) View() string {
 		view = "typing test page" + "\n\n"
 		view += fitStyle.Render(m.viewText) + "\n"
 	case resultsPage:
-		view = "accuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + "\n\n"
-		view += "wpm: " + fmt.Sprint(m.getSpeed()) + "\n\n"
+		view = "wpm: " + fmt.Sprint(m.getSpeed()) + "\n\n"
+		view += "accuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + "\n\n"
 	}
 	return title + "\n\n" + view
 }
@@ -133,18 +130,15 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 		if m.currentWord != "" {
 			m.currentWord = m.currentWord[:len(m.currentWord)-1]
 		} else {
-			// get previous word
 			m.currentWord = m.inputText.Value()[getPreviousWordStartIdx(m.inputText.Value()):]
 		}
 	case " ":
-		//check := m.currentWord
 		wordLength := len(m.currentWord)
 		totalInputLength := len(m.inputText.Value())
 		if m.isWordCorrect(totalInputLength-wordLength-1, totalInputLength) {
 			m.totalLengthCorrectWords += wordLength + 1
 			m.stopBackspaceIdx = len(m.inputText.Value())
 		}
-
 		m.currentWord = ""
 	}
 	var inputCmd tea.Cmd
@@ -161,6 +155,11 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 		}
 	}
 	if len(m.inputText.Value()) == len(m.fileText) {
+		wordLength := len(m.currentWord)
+		totalInputLength := len(m.inputText.Value())
+		if m.isWordCorrect(totalInputLength-wordLength-1, totalInputLength) {
+			m.totalLengthCorrectWords += wordLength
+		}
 		m.page = resultsPage
 		m.inputText.Blur()
 	}
@@ -202,7 +201,6 @@ func (m *Model) updateViewText() string {
 			currentStyle = s
 		}
 	}
-
 	for i := range inputText {
 		if inputText[i] == fileText[i] {
 			updateSection(correctStyle, i)
@@ -213,9 +211,15 @@ func (m *Model) updateViewText() string {
 
 	viewText += currentStyle.Render(currentSection)
 	viewText += untypedStyle.Render(fileText[len(inputText):])
+	currentCorrectWordLength := 0
+	wordLength := len(m.currentWord)
+	totalInputLength := len(m.inputText.Value())
+	if m.isWordCorrect(totalInputLength-wordLength, totalInputLength) {
+		currentCorrectWordLength = wordLength
+	}
 	return viewText + "\n" + "visible input length: " + fmt.Sprint(len(inputText)) + "\n\ncurrent word: " +
-		m.currentWord + "\n\ntotal length of correct words: " + fmt.Sprint(m.totalLengthCorrectWords) + "\n\ntotal input length: " +
-		fmt.Sprint(len(viewText)) + "\n\naccuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + "\n\ntime remaining: " + m.timer.View() +
+		m.currentWord + "\n\ntotal length of correct words: " + fmt.Sprint(m.totalLengthCorrectWords+currentCorrectWordLength) +
+		"\n\naccuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + "\n\ntime remaining: " + m.timer.View() +
 		"\n\nwpm: " + fmt.Sprint(m.getSpeed())
 }
 
@@ -236,11 +240,20 @@ func (m Model) getSpeed() int {
 	if secondsPassed == 0 {
 		return 0
 	}
-	return (m.totalLengthCorrectWords / 5) * (60 / secondsPassed)
+	currentCorrectWordLength := 0
+	wordLength := len(m.currentWord)
+	totalInputLength := len(m.inputText.Value())
+	if m.isWordCorrect(totalInputLength-wordLength, totalInputLength) {
+		currentCorrectWordLength = wordLength
+	}
+	return ((m.totalLengthCorrectWords + currentCorrectWordLength) / 5) * (60 / secondsPassed)
 }
 
 func getPreviousWordStartIdx(text string) int {
 	i := len(text) - 1
+	if i < 0 {
+		return 0
+	}
 	if text[i] == ' ' { // ignore first space
 		i--
 	}

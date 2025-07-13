@@ -20,7 +20,7 @@ const (
 type Model struct {
 	page         int
 	fileText     string
-	previousText string
+	previousText textinput.Model
 	inputText    textinput.Model
 	viewText     string
 
@@ -61,7 +61,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case testPage:
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
-			m.previousText = m.inputText.Value()
+			m.previousText = m.inputText
 			m.inputText, inputCmd = m.inputText.Update(msg)
 			m, keyCmd = m.testPageKeyHandler(msg.String())
 		}
@@ -108,6 +108,10 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "backspace":
+		if len(m.previousText.Value()) == m.stopBackspaceIdx {
+			m.inputText = m.previousText
+			return m, nil
+		}
 		if m.currentWord != "" {
 			m.currentWord = m.currentWord[:len(m.currentWord)-1]
 		} else {
@@ -115,13 +119,13 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 			m.currentWord = m.inputText.Value()[getPreviousWordStartIdx(m.inputText.Value()):]
 		}
 	case " ":
-		//startIdx := getWordStartIdx(m.inputText.Value())
-		//length := len(m.inputText.Value())
 		//check := m.currentWord
+		m.totalLengthCorrectWords += len(m.currentWord) + 1
 		m.currentWord = ""
+		m.stopBackspaceIdx = len(m.inputText.Value())
 	}
 	var inputCmd tea.Cmd
-	if len(m.inputText.Value()) > len(m.previousText) {
+	if len(m.inputText.Value()) > len(m.previousText.Value()) {
 		input := m.inputText.Value()
 		newLetter := string(input[len(input)-1])
 		if newLetter != " " || m.currentWord != "" {
@@ -186,8 +190,8 @@ func (m *Model) updateViewText() string {
 	viewText += currentStyle.Render(currentSection)
 	viewText += untypedStyle.Render(fileText[len(inputText):])
 	return viewText + "\n" + "visible input length: " + fmt.Sprint(len(inputText)) + "\n\ncurrent word: " +
-		m.currentWord + "\n\ntotal input length: " + fmt.Sprint(len(viewText)) +
-		"\n\naccuracy: " + fmt.Sprint(m.getAccuracy()) + "%"
+		m.currentWord + "\n\ntotal length of correct words: " + fmt.Sprint(m.totalLengthCorrectWords) + "\n\ntotal input length: " +
+		fmt.Sprint(len(viewText)) + "\n\naccuracy: " + fmt.Sprint(m.getAccuracy()) + "%"
 }
 
 func (m *Model) addAccuracyStats(numAttemptsDelta int, totalCorrect int) {

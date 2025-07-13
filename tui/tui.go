@@ -41,12 +41,13 @@ var (
 func initialModel() (Model, error) {
 	m := Model{}
 	m.page = testPage
+	//m.timer = timer.New(time.Second * time.Duration(m.totalTimeSeconds))
 	m.testPageInit()
 	return m, nil
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.timer.Init(), tea.SetWindowTitle("ttype"))
+	return tea.Batch(tea.SetWindowTitle("ttype"), m.timer.Init())
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -86,7 +87,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case "esc":
 				m.page = testPage
-				m.testPageInit()
+				return m, m.testPageInit()
 			}
 		}
 	}
@@ -177,13 +178,12 @@ func (m *Model) testPageInit() tea.Cmd {
 	m.totalCorrect = 0
 	m.totalLengthCorrectWords = 0
 	m.currentWord = ""
-	m.timer.Timeout = time.Second * 30
 	inputText := textinput.New()
 	inputText.CharLimit = len(m.fileText)
 	m.inputText = inputText
-	m.totalTimeSeconds = 30
-	m.timer = timer.NewWithInterval(time.Second*30, time.Second)
-	return m.inputText.Focus()
+	m.totalTimeSeconds = 40 // make this a user input
+	m.timer = timer.New(time.Second * time.Duration(m.totalTimeSeconds))
+	return tea.Batch(m.inputText.Focus(), m.timer.Init())
 }
 
 func (m *Model) updateViewText() string {
@@ -211,16 +211,8 @@ func (m *Model) updateViewText() string {
 
 	viewText += currentStyle.Render(currentSection)
 	viewText += untypedStyle.Render(fileText[len(inputText):])
-	currentCorrectWordLength := 0
-	wordLength := len(m.currentWord)
-	totalInputLength := len(m.inputText.Value())
-	if m.isWordCorrect(totalInputLength-wordLength, totalInputLength) {
-		currentCorrectWordLength = wordLength
-	}
-	return viewText + "\n" + "visible input length: " + fmt.Sprint(len(inputText)) + "\n\ncurrent word: " +
-		m.currentWord + "\n\ntotal length of correct words: " + fmt.Sprint(m.totalLengthCorrectWords+currentCorrectWordLength) +
-		"\n\naccuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + "\n\ntime remaining: " + m.timer.View() +
-		"\n\nwpm: " + fmt.Sprint(m.getSpeed())
+	return viewText + "\n" + "\n\nwpm: " + fmt.Sprint(m.getSpeed()) + "\n\naccuracy: " + fmt.Sprint(m.getAccuracy()) + "%" +
+		"\n\ntime remaining: " + m.timer.View()
 }
 
 func (m *Model) addAccuracyStats(numAttemptsDelta int, totalCorrect int) {
@@ -267,6 +259,9 @@ func getPreviousWordStartIdx(text string) int {
 }
 
 func (m Model) isWordCorrect(startIdx int, endIdx int) bool {
+	if startIdx < 0 {
+		return false
+	}
 	for i := startIdx; i < endIdx; i++ {
 		if m.fileText[i] != m.inputText.Value()[i] {
 			return false

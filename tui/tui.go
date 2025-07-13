@@ -18,11 +18,11 @@ const (
 )
 
 type Model struct {
-	page      int
-	fileText  string
+	page         int
+	fileText     string
 	previousText string
-	inputText textinput.Model
-	viewText  string
+	inputText    textinput.Model
+	viewText     string
 
 	totalCorrect            int
 	numAttempts             int
@@ -107,10 +107,27 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 	switch msg {
 	case "ctrl+c":
 		return m, tea.Quit
+	case "backspace":
+		if m.currentWord != "" {
+			m.currentWord = m.currentWord[:len(m.currentWord)-1]
+		} else {
+			// get previous word
+			m.currentWord = m.inputText.Value()[getPreviousWordStartIdx(m.inputText.Value()):]
+		}
+	case " ":
+		//startIdx := getWordStartIdx(m.inputText.Value())
+		//length := len(m.inputText.Value())
+		//check := m.currentWord
+		m.currentWord = ""
 	}
 	var inputCmd tea.Cmd
 	if len(m.inputText.Value()) > len(m.previousText) {
-		if input := m.inputText.Value(); input[len(input)-1] == m.fileText[len(input)-1] {
+		input := m.inputText.Value()
+		newLetter := string(input[len(input)-1])
+		if newLetter != " " || m.currentWord != "" {
+			m.currentWord += newLetter
+		}
+		if newLetter == string(m.fileText[len(input)-1]) {
 			m.addAccuracyStats(1, 1)
 		} else {
 			m.addAccuracyStats(1, 0)
@@ -168,8 +185,8 @@ func (m *Model) updateViewText() string {
 
 	viewText += currentStyle.Render(currentSection)
 	viewText += untypedStyle.Render(fileText[len(inputText):])
-	return viewText + "\n" + "file length: " + fmt.Sprint(len(fileText)) + "\n\nvisible input length: " +
-		fmt.Sprint(len(inputText)) + "\n\ntotal input length: " + fmt.Sprint(len(viewText)) +
+	return viewText + "\n" + "visible input length: " + fmt.Sprint(len(inputText)) + "\n\ncurrent word: " +
+		m.currentWord + "\n\ntotal input length: " + fmt.Sprint(len(viewText)) +
 		"\n\naccuracy: " + fmt.Sprint(m.getAccuracy()) + "%"
 }
 
@@ -193,19 +210,20 @@ func (m Model) getSpeed() int {
 }
 
 // on space check:
-// was the last word (from the current position to position of last space / start of string) correct?
+// was the last word correct?
 // if so prevent backspace beyond this point
 // calculate speed
-// on backspace: getCurrentWordRange()
-
-func getWordStartIdx(text string) int {
+// on backspace: check backspace index; bounce if is equal to
+// recalculate word: if word is not empty word = word[:len(word) - 1]
+// else word = last word (if last word does not cross stopbackspaceidx)
+func getPreviousWordStartIdx(text string) int {
 	i := len(text) - 1
 	if text[i] == ' ' { // ignore first space
 		i--
 	}
 	for i > 0 {
 		if text[i] == ' ' {
-			break
+			return i + 1
 		}
 		i--
 	}

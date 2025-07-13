@@ -3,12 +3,13 @@ package tui
 import (
 	"fmt"
 	"os"
+	"time"
 
 	//"path/filepath"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/charmbracelet/bubbles/textinput"
-	//"github.com/charmbracelet/bubbles/timer"
+	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -31,7 +32,7 @@ type Model struct {
 	totalTimeSeconds        int
 	currentWord             string
 
-	//timer timer.Model
+	timer timer.Model
 }
 
 var (
@@ -49,7 +50,7 @@ func initialModel() (Model, error) {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.SetWindowTitle("ttype")
+	return tea.Batch(m.timer.Init(), tea.SetWindowTitle("ttype"))
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -64,6 +65,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.previousText = m.inputText
 			m.inputText, inputCmd = m.inputText.Update(msg)
 			m, keyCmd = m.testPageKeyHandler(msg.String())
+			m.viewText = m.updateViewText()
+		case timer.TickMsg:
+			var timerCmd tea.Cmd
+			m.timer, timerCmd = m.timer.Update(msg)
+			m.viewText = m.updateViewText()
+			return m, timerCmd
+		case timer.StartStopMsg:
+			var timerCmd tea.Cmd
+			m.timer, timerCmd = m.timer.Update(msg)
+			m.viewText = m.updateViewText()
+			return m, timerCmd
+		case timer.TimeoutMsg:
+			m.page = resultsPage
+			m.viewText = m.updateViewText()
+			return m, nil
 		}
 	case resultsPage:
 		switch msg := msg.(type) {
@@ -73,6 +89,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case "esc":
 				m.page = testPage
+				m.testPageInit()
 			}
 		}
 	}
@@ -88,7 +105,8 @@ func (m Model) View() string {
 		view = "typing test page" + "\n\n"
 		view += fitStyle.Render(m.viewText) + "\n"
 	case resultsPage:
-		view = "accuracy: " + fmt.Sprint(m.getAccuracy()) + "%"
+		view = "accuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + "\n\n"
+		view += "wpm: " + fmt.Sprint(m.getSpeed()) + "\n\n"
 	}
 	return title + "\n\n" + view
 }
@@ -120,9 +138,14 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 		}
 	case " ":
 		//check := m.currentWord
-		m.totalLengthCorrectWords += len(m.currentWord) + 1
+		wordLength := len(m.currentWord)
+		totalInputLength := len(m.inputText.Value())
+		if m.isWordCorrect(totalInputLength-wordLength-1, totalInputLength) {
+			m.totalLengthCorrectWords += wordLength + 1
+			m.stopBackspaceIdx = len(m.inputText.Value())
+		}
+
 		m.currentWord = ""
-		m.stopBackspaceIdx = len(m.inputText.Value())
 	}
 	var inputCmd tea.Cmd
 	if len(m.inputText.Value()) > len(m.previousText.Value()) {
@@ -141,7 +164,6 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 		m.page = resultsPage
 		m.inputText.Blur()
 	}
-	m.viewText = m.updateViewText()
 	return m, inputCmd
 }
 
@@ -155,11 +177,13 @@ func (m *Model) testPageInit() tea.Cmd {
 	m.numAttempts = 0
 	m.totalCorrect = 0
 	m.totalLengthCorrectWords = 0
-	m.totalTimeSeconds = 0
 	m.currentWord = ""
+	m.timer.Timeout = time.Second * 30
 	inputText := textinput.New()
 	inputText.CharLimit = len(m.fileText)
 	m.inputText = inputText
+	m.totalTimeSeconds = 30
+	m.timer = timer.NewWithInterval(time.Second*30, time.Second)
 	return m.inputText.Focus()
 }
 
@@ -191,7 +215,8 @@ func (m *Model) updateViewText() string {
 	viewText += untypedStyle.Render(fileText[len(inputText):])
 	return viewText + "\n" + "visible input length: " + fmt.Sprint(len(inputText)) + "\n\ncurrent word: " +
 		m.currentWord + "\n\ntotal length of correct words: " + fmt.Sprint(m.totalLengthCorrectWords) + "\n\ntotal input length: " +
-		fmt.Sprint(len(viewText)) + "\n\naccuracy: " + fmt.Sprint(m.getAccuracy()) + "%"
+		fmt.Sprint(len(viewText)) + "\n\naccuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + "\n\ntime remaining: " + m.timer.View() +
+		"\n\nwpm: " + fmt.Sprint(m.getSpeed())
 }
 
 func (m *Model) addAccuracyStats(numAttemptsDelta int, totalCorrect int) {
@@ -207,19 +232,13 @@ func (m Model) getAccuracy() int {
 }
 
 func (m Model) getSpeed() int {
-	if m.totalTimeSeconds == 0 {
+	secondsPassed := m.totalTimeSeconds - int(m.timer.Timeout.Seconds())
+	if secondsPassed == 0 {
 		return 0
 	}
-	return (m.totalLengthCorrectWords / 5) * (60 / m.totalTimeSeconds)
+	return (m.totalLengthCorrectWords / 5) * (60 / secondsPassed)
 }
 
-// on space check:
-// was the last word correct?
-// if so prevent backspace beyond this point
-// calculate speed
-// on backspace: check backspace index; bounce if is equal to
-// recalculate word: if word is not empty word = word[:len(word) - 1]
-// else word = last word (if last word does not cross stopbackspaceidx)
 func getPreviousWordStartIdx(text string) int {
 	i := len(text) - 1
 	if text[i] == ' ' { // ignore first space
@@ -232,4 +251,13 @@ func getPreviousWordStartIdx(text string) int {
 		i--
 	}
 	return i
+}
+
+func (m Model) isWordCorrect(startIdx int, endIdx int) bool {
+	for i := startIdx; i < endIdx; i++ {
+		if m.fileText[i] != m.inputText.Value()[i] {
+			return false
+		}
+	}
+	return true
 }

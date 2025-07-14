@@ -3,8 +3,9 @@ package tui
 import (
 	"fmt"
 	"math/rand"
-	"time"
 	"strings"
+	"time"
+
 	"github.com/Pallinder/go-randomdata"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/timer"
@@ -12,10 +13,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// REWRITE NEEDED - move text into array of trimmed words, model behavior after monkeytype.com
+
 var textLength = 100
 
-var randomWordFunction = []func()string{randomdata.Noun, randomdata.Adjective, randomdata.City, randomdata.Day, 
-										randomdata.City, randomdata.Month}
+var randomWordFunction = []func() string{randomdata.Noun, randomdata.Adjective, randomdata.City, randomdata.Day,
+	randomdata.City, randomdata.Month}
 
 const (
 	testPage = iota
@@ -24,6 +27,8 @@ const (
 
 type Model struct {
 	page                    int
+	width                   int
+	height                  int
 	fileText                string
 	previousText            textinput.Model
 	inputText               textinput.Model
@@ -42,6 +47,7 @@ var (
 	correctStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	wrongStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 	fitStyle     = lipgloss.NewStyle().Width(100)
+	headerStyle  = lipgloss.NewStyle().Bold(true)
 )
 
 func initialModel(testDurationSeconds int) (Model, error) {
@@ -65,6 +71,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.page {
 	case testPage:
 		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			m.width = msg.Width
+			m.height = msg.Height
 		case tea.KeyMsg:
 			m.previousText = m.inputText
 			m.inputText, inputCmd = m.inputText.Update(msg)
@@ -107,7 +116,6 @@ func (m Model) View() string {
 	var view string
 	switch m.page {
 	case testPage:
-		view = "typing test page" + "\n\n"
 		view += fitStyle.Render(m.viewText) + "\n"
 	case resultsPage:
 		view = "wpm: " + fmt.Sprint(m.getSpeed()) + "\n\n"
@@ -178,9 +186,9 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 
 func (m *Model) testPageInit() tea.Cmd {
 	m.fileText = ""
-	for i:=0; i < textLength; i++ {
+	for i := 0; i < textLength; i++ {
 		m.fileText += strings.ToLower(randomWordFunction[rand.Intn(len(randomWordFunction))]())
-		if i < textLength - 1 {
+		if i < textLength-1 {
 			m.fileText += " "
 		}
 	}
@@ -224,8 +232,11 @@ func (m *Model) updateViewText() string {
 
 	viewText += currentStyle.Render(currentSection)
 	viewText += untypedStyle.Render(fileText[len(inputText):])
-	return viewText + "\n" + "\n\nwpm: " + fmt.Sprint(m.getSpeed()) + "\n\naccuracy: " + fmt.Sprint(m.getAccuracy()) + "%" +
-		"\n\ntime remaining: " + m.timer.View()
+	wpm := headerStyle.Render("wpm: " + fmt.Sprint(m.getSpeed()))
+	accuracy := headerStyle.Render("accuracy: " + fmt.Sprint(m.getAccuracy()) + "%")
+	timeLeft := headerStyle.Render("time remaining: " + m.timer.View())
+	space := "   "
+	return wpm + space + accuracy + space + timeLeft + "\n\n" + viewText
 }
 
 func (m *Model) addAccuracyStats(numAttemptsDelta int, totalCorrect int) {

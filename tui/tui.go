@@ -162,9 +162,9 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 		totalInputLength := len(m.inputText.Value())
 		if m.isWordCorrect(totalInputLength-wordLength-1, totalInputLength) {
 			m.totalLengthCorrectWords += wordLength
+			m.page = resultsPage
+			m.inputText.Blur()
 		}
-		m.page = resultsPage
-		m.inputText.Blur()
 	}
 	return m, inputCmd
 }

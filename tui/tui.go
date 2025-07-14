@@ -2,14 +2,20 @@ package tui
 
 import (
 	"fmt"
-	"os"
+	"math/rand"
 	"time"
-
+	"strings"
+	"github.com/Pallinder/go-randomdata"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+var textLength = 100
+
+var randomWordFunction = []func()string{randomdata.Noun, randomdata.Adjective, randomdata.City, randomdata.Day, 
+										randomdata.City, randomdata.Month}
 
 const (
 	testPage = iota
@@ -47,6 +53,7 @@ func initialModel(testDurationSeconds int) (Model, error) {
 }
 
 func (m Model) Init() tea.Cmd {
+	rand.Seed(time.Now().UnixNano())
 	return tea.Batch(tea.SetWindowTitle("ttype"), m.timer.Init())
 }
 
@@ -170,12 +177,15 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 }
 
 func (m *Model) testPageInit() tea.Cmd {
-	text, err := os.ReadFile("./testFile.md")
-	if err != nil {
-		panic("could not read file")
+	m.fileText = ""
+	for i:=0; i < textLength; i++ {
+		m.fileText += strings.ToLower(randomWordFunction[rand.Intn(len(randomWordFunction))]())
+		if i < textLength - 1 {
+			m.fileText += " "
+		}
 	}
-	m.fileText = string(text)
-	m.viewText = untypedStyle.Render(string(text))
+
+	m.viewText = untypedStyle.Render(m.fileText)
 	m.numAttempts = 0
 	m.totalCorrect = 0
 	m.totalLengthCorrectWords = 0

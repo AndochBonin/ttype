@@ -15,30 +15,28 @@ import (
 
 // REWRITE NEEDED - move text into array of trimmed words, model behavior after monkeytype.com
 
-var textLength = 100
-
-var randomWordFunction = []func() string{randomdata.Noun, randomdata.Adjective, randomdata.City, randomdata.Day,
-	randomdata.City, randomdata.Month}
+var randomWordFunction = []func() string{randomdata.Noun, randomdata.Adjective, randomdata.Day, randomdata.Month,
+	randomdata.City}
 
 const (
 	testPage = iota
-	resultsPage
+	//resultsPage
 )
 
 type Model struct {
 	page                    int
 	width                   int
 	height                  int
-	fileText                string
-	previousText            textinput.Model
-	inputText               textinput.Model
+	textLength              int
 	viewText                string
+	testText                []string
+	userText                []string
+	currentWordInput        textinput.Model
+	currentInputIdx         int
 	totalCorrect            int
 	numAttempts             int
 	totalLengthCorrectWords int
-	stopBackspaceIdx        int
 	totalTimeSeconds        int
-	currentWord             string
 	timer                   timer.Model
 }
 
@@ -59,7 +57,7 @@ func initialModel(testDurationSeconds int) (Model, error) {
 }
 
 func (m Model) Init() tea.Cmd {
-	rand.Seed(time.Now().UnixNano())
+	//rand.Seed(time.Now().UnixNano())
 	return tea.Batch(tea.SetWindowTitle("ttype"), m.timer.Init())
 }
 
@@ -75,36 +73,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.width = msg.Width
 			m.height = msg.Height
 		case tea.KeyMsg:
-			m.previousText = m.inputText
-			m.inputText, inputCmd = m.inputText.Update(msg)
+			if msg.String() != " " {
+				m.currentWordInput, inputCmd = m.currentWordInput.Update(msg)
+			}
 			m, keyCmd = m.testPageKeyHandler(msg.String())
-			m.viewText = m.updateViewText()
+			m.viewText = m.getViewText()
 		case timer.TickMsg:
 			var timerCmd tea.Cmd
 			m.timer, timerCmd = m.timer.Update(msg)
-			m.viewText = m.updateViewText()
+			m.viewText = m.getViewText()
 			return m, timerCmd
 		case timer.StartStopMsg:
 			var timerCmd tea.Cmd
 			m.timer, timerCmd = m.timer.Update(msg)
-			m.viewText = m.updateViewText()
+			m.viewText = m.getViewText()
 			return m, timerCmd
 		case timer.TimeoutMsg:
-			m.page = resultsPage
-			m.inputText.Blur()
-			m.viewText = m.updateViewText()
+			//m.page = resultsPage
+			m.currentWordInput.Blur()
+			m.viewText = m.getViewText()
 			return m, nil
-		}
-	case resultsPage:
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.String() {
-			case "ctrl+c":
-				return m, tea.Quit
-			case "esc":
-				m.page = testPage
-				return m, m.testPageInit()
-			}
+			// 	}
+			// case resultsPage:
+			// 	switch msg := msg.(type) {
+			// 	case tea.KeyMsg:
+			// 		switch msg.String() {
+			// 		case "ctrl+c":
+			// 			return m, tea.Quit
+			// 		case "esc":
+			// 			m.page = testPage
+			// 			return m, m.testPageInit()
+			// 		}
 		}
 	}
 	cmds = append(cmds, cmd, keyCmd, inputCmd)
@@ -116,12 +115,15 @@ func (m Model) View() string {
 	var view string
 	switch m.page {
 	case testPage:
-		view += fitStyle.Render(m.viewText) + "\n"
-	case resultsPage:
-		view = "wpm: " + fmt.Sprint(m.getSpeed()) + "\n\n"
-		view += "accuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + "\n\n"
+		space := "   "
+		stats := "wpm: " + fmt.Sprint(m.getSpeed()) + space + "accuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + space +
+			"time remaining: " + m.timer.View() + "\n\n"
+		view += stats + fitStyle.Render(m.viewText) + "\n"
+		// case resultsPage:
+		// 	view = "wpm: " + fmt.Sprint(m.getSpeed()) + "\n\n"
+		// 	view += "accuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + "\n\n"
 	}
-	return title + "\n\n" + view
+	return headerStyle.Render(title) + "\n\n" + view
 }
 
 func Run(testDurationSeconds int) error {
@@ -141,107 +143,60 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 	case "tab":
 		return m, m.testPageInit()
 	case "backspace":
-		if len(m.previousText.Value()) == m.stopBackspaceIdx {
-			m.inputText = m.previousText
-			return m, nil
-		}
-		if m.currentWord != "" {
-			m.currentWord = m.currentWord[:len(m.currentWord)-1]
-		} else {
-			m.currentWord = m.inputText.Value()[getPreviousWordStartIdx(m.inputText.Value()):]
+		if m.canEditPreviousWord() {
+			m.currentInputIdx--
+			m.currentWordInput.SetValue(m.userText[m.currentInputIdx])
 		}
 	case " ":
-		wordLength := len(m.currentWord)
-		totalInputLength := len(m.inputText.Value())
-		if m.isWordCorrect(totalInputLength-wordLength-1, totalInputLength) {
-			m.totalLengthCorrectWords += wordLength + 1
-			m.stopBackspaceIdx = len(m.inputText.Value())
-		}
-		m.currentWord = ""
-	}
-	var inputCmd tea.Cmd
-	if len(m.inputText.Value()) > len(m.previousText.Value()) {
-		input := m.inputText.Value()
-		newLetter := string(input[len(input)-1])
-		if newLetter != " " || m.currentWord != "" {
-			m.currentWord += newLetter
-		}
-		if newLetter == string(m.fileText[len(input)-1]) {
-			m.addAccuracyStats(1, 1)
-		} else {
-			m.addAccuracyStats(1, 0)
+		if m.currentInputIdx < len(m.testText)-1 {
+			if m.isWordCorrect(m.currentInputIdx) {
+				m.totalLengthCorrectWords += len(m.testText[m.currentInputIdx])
+			}
+			m.currentInputIdx++
+			m.currentWordInput.SetValue("")
 		}
 	}
-	if len(m.inputText.Value()) == len(m.fileText) {
-		wordLength := len(m.currentWord)
-		totalInputLength := len(m.inputText.Value())
-		if m.isWordCorrect(totalInputLength-wordLength-1, totalInputLength) {
-			m.totalLengthCorrectWords += wordLength
-			m.page = resultsPage
-			m.inputText.Blur()
-		}
+	m.userText[m.currentInputIdx] = m.currentWordInput.Value()
+	if msg != "backspace" {
+		m.updateAccuracystats()
 	}
-	return m, inputCmd
+	return m, nil
 }
 
 func (m *Model) testPageInit() tea.Cmd {
-	m.fileText = ""
-	for i := 0; i < textLength; i++ {
-		m.fileText += strings.ToLower(randomWordFunction[rand.Intn(len(randomWordFunction))]())
-		if i < textLength-1 {
-			m.fileText += " "
+	m.testText = []string{}
+	m.textLength = m.totalTimeSeconds * 4
+	for range m.textLength {
+		randomWord := strings.ToLower(randomWordFunction[rand.Intn(len(randomWordFunction))]())
+		for strings.Contains(randomWord, " ") {
+			randomWord = strings.ToLower(randomWordFunction[rand.Intn(len(randomWordFunction))]())
 		}
+		m.testText = append(m.testText, randomWord)
 	}
 
-	m.viewText = untypedStyle.Render(m.fileText)
+	for i, word := range m.testText {
+		m.viewText += word
+		if i < len(m.testText)-1 {
+			m.viewText += " "
+		}
+	}
+	m.viewText = untypedStyle.Render(m.viewText)
+	m.userText = make([]string, m.textLength)
+	m.currentInputIdx = 0
 	m.numAttempts = 0
 	m.totalCorrect = 0
 	m.totalLengthCorrectWords = 0
-	m.currentWord = ""
-	inputText := textinput.New()
-	inputText.CharLimit = len(m.fileText)
-	m.inputText = inputText
-	m.previousText = inputText
-	m.stopBackspaceIdx = 0
 	m.timer = timer.New(time.Second * time.Duration(m.totalTimeSeconds))
-	return tea.Batch(m.inputText.Focus(), m.timer.Init())
+	m.currentWordInput = textinput.New()
+	return tea.Batch(m.currentWordInput.Focus(), m.timer.Init())
 }
 
-func (m *Model) updateViewText() string {
-	inputText := m.inputText.Value()
-	fileText := m.fileText
+func (m *Model) getViewText() string {
 	viewText := ""
-	currentSection := ""
-	currentStyle := lipgloss.NewStyle().Foreground(lipgloss.NoColor{})
-	var updateSection = func(s lipgloss.Style, idx int) {
-		if s.GetForeground() == currentStyle.GetForeground() {
-			currentSection += string(fileText[idx])
-		} else {
-			viewText += currentStyle.Render(currentSection)
-			currentSection = string(fileText[idx])
-			currentStyle = s
-		}
+	for i := range m.testText {
+		viewText += m.getStyledWord(i) + " "
 	}
-	for i := range inputText {
-		if inputText[i] == fileText[i] {
-			updateSection(correctStyle, i)
-		} else {
-			updateSection(wrongStyle, i)
-		}
-	}
-
-	viewText += currentStyle.Render(currentSection)
-	viewText += untypedStyle.Render(fileText[len(inputText):])
-	wpm := headerStyle.Render("wpm: " + fmt.Sprint(m.getSpeed()))
-	accuracy := headerStyle.Render("accuracy: " + fmt.Sprint(m.getAccuracy()) + "%")
-	timeLeft := headerStyle.Render("time remaining: " + m.timer.View())
-	space := "   "
-	return wpm + space + accuracy + space + timeLeft + "\n\n" + viewText
-}
-
-func (m *Model) addAccuracyStats(numAttemptsDelta int, totalCorrect int) {
-	m.numAttempts += numAttemptsDelta
-	m.totalCorrect += totalCorrect
+	return viewText
 }
 
 func (m Model) getAccuracy() int {
@@ -257,39 +212,77 @@ func (m Model) getSpeed() int {
 		return 0
 	}
 	currentCorrectWordLength := 0
-	wordLength := len(m.currentWord)
-	totalInputLength := len(m.inputText.Value())
-	if m.isWordCorrect(totalInputLength-wordLength, totalInputLength) {
-		currentCorrectWordLength = wordLength
+	inputWordLength := len(m.userText[m.currentInputIdx])
+	testWordLength := len(m.testText[m.currentInputIdx])
+	if inputWordLength <= testWordLength && m.testText[m.currentInputIdx][:inputWordLength] == m.userText[m.currentInputIdx] {
+		currentCorrectWordLength = inputWordLength
 	}
 	return ((m.totalLengthCorrectWords + currentCorrectWordLength) / 5) * (60 / secondsPassed)
 }
 
-func getPreviousWordStartIdx(text string) int {
-	i := len(text) - 1
-	if i < 0 {
-		return 0
+func (m Model) getStyledWord(index int) string {
+	testWord := m.testText[index]
+	inputWord := m.userText[index]
+	if testWord == inputWord {
+		return correctStyle.Render(testWord)
 	}
-	if text[i] == ' ' { // ignore first space
-		i--
+
+	coloredWord := ""
+	var shortWord string
+	var longWord string
+	var leftoverStyle lipgloss.Style
+	var underline = false
+	if index < m.currentInputIdx {
+		underline = true
 	}
-	for i > 0 {
-		if text[i] == ' ' {
-			return i + 1
+
+	if len(inputWord) >= len(testWord) {
+		shortWord = testWord
+		longWord = inputWord
+		leftoverStyle = wrongStyle
+	} else {
+		shortWord = inputWord
+		longWord = testWord
+		leftoverStyle = untypedStyle
+	}
+	if shortWord == longWord[:len(shortWord)] {
+		coloredWord += correctStyle.Underline(underline).Render(shortWord)
+	} else { // color individually
+		for i := range shortWord {
+			if testWord[i] == inputWord[i] {
+				coloredWord += correctStyle.Underline(underline).Render(string(testWord[i]))
+			} else {
+				coloredWord += wrongStyle.Underline(underline).Render(string(testWord[i]))
+			}
 		}
-		i--
 	}
-	return i
+	coloredWord += leftoverStyle.Underline(underline).Render(longWord[len(shortWord):])
+	return coloredWord
 }
 
-func (m Model) isWordCorrect(startIdx int, endIdx int) bool {
-	if startIdx < 0 {
+func (m Model) canEditPreviousWord() bool {
+	idx := m.currentInputIdx
+	if m.userText[idx] == "" && idx > 0 && m.userText[idx-1] != m.testText[idx-1] {
+		return true
+	}
+	return false
+}
+
+func (m Model) isWordCorrect(idx int) bool {
+	if idx < 0 || idx > len(m.testText) {
 		return false
 	}
-	for i := startIdx; i < endIdx; i++ {
-		if m.fileText[i] != m.inputText.Value()[i] {
-			return false
-		}
+	return m.testText[idx] == m.userText[idx]
+}
+
+func (m *Model) updateAccuracystats() {
+	ttLen := len(m.testText[m.currentInputIdx])
+	utLen := len(m.userText[m.currentInputIdx])
+	if utLen < 1 || ttLen < 1 {
+		return
 	}
-	return true
+	m.numAttempts++
+	if utLen <= ttLen && m.testText[m.currentInputIdx][utLen-1] == m.userText[m.currentInputIdx][utLen-1] {
+		m.totalCorrect++
+	}
 }

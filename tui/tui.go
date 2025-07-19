@@ -13,14 +13,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// REWRITE NEEDED - move text into array of trimmed words, model behavior after monkeytype.com
-
 var randomWordFunction = []func() string{randomdata.Noun, randomdata.Adjective, randomdata.Day, randomdata.Month,
 	randomdata.City}
 
 const (
 	testPage = iota
-	//resultsPage
+	resultsPage
 )
 
 type Model struct {
@@ -33,6 +31,7 @@ type Model struct {
 	userText                []string
 	currentWordInput        textinput.Model
 	currentInputIdx         int
+	cursorIdx int
 	totalCorrect            int
 	numAttempts             int
 	totalLengthCorrectWords int
@@ -57,7 +56,6 @@ func initialModel(testDurationSeconds int) (Model, error) {
 }
 
 func (m Model) Init() tea.Cmd {
-	//rand.Seed(time.Now().UnixNano())
 	return tea.Batch(tea.SetWindowTitle("ttype"), m.timer.Init())
 }
 
@@ -89,21 +87,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewText = m.getViewText()
 			return m, timerCmd
 		case timer.TimeoutMsg:
-			//m.page = resultsPage
+			m.page = resultsPage
 			m.currentWordInput.Blur()
 			m.viewText = m.getViewText()
 			return m, nil
-			// 	}
-			// case resultsPage:
-			// 	switch msg := msg.(type) {
-			// 	case tea.KeyMsg:
-			// 		switch msg.String() {
-			// 		case "ctrl+c":
-			// 			return m, tea.Quit
-			// 		case "esc":
-			// 			m.page = testPage
-			// 			return m, m.testPageInit()
-			// 		}
+		}
+	case resultsPage:
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc":
+				m.viewText = ""
+				m.page = testPage
+				return m, m.testPageInit()
+			}
 		}
 	}
 	cmds = append(cmds, cmd, keyCmd, inputCmd)
@@ -116,12 +115,12 @@ func (m Model) View() string {
 	switch m.page {
 	case testPage:
 		space := "   "
-		stats := "wpm: " + fmt.Sprint(m.getSpeed()) + space + "accuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + space +
-			"time remaining: " + m.timer.View() + "\n\n"
+		stats := headerStyle.Render("wpm: " + fmt.Sprint(m.getSpeed()) + space + "accuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + space +
+			"time remaining: " + m.timer.View()) + "\n\n"
 		view += stats + fitStyle.Render(m.viewText) + "\n"
-		// case resultsPage:
-		// 	view = "wpm: " + fmt.Sprint(m.getSpeed()) + "\n\n"
-		// 	view += "accuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + "\n\n"
+	case resultsPage:
+		view = headerStyle.Render("wpm: " + fmt.Sprint(m.getSpeed())) + "\n\n"
+		view += headerStyle.Render("accuracy: " + fmt.Sprint(m.getAccuracy()) + "%") + "\n\n"
 	}
 	return headerStyle.Render(title) + "\n\n" + view
 }
@@ -157,6 +156,7 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 		}
 	}
 	m.userText[m.currentInputIdx] = m.currentWordInput.Value()
+	m.cursorIdx = len(m.userText[m.currentInputIdx])
 	if msg != "backspace" {
 		m.updateAccuracystats()
 	}
@@ -183,6 +183,7 @@ func (m *Model) testPageInit() tea.Cmd {
 	m.viewText = untypedStyle.Render(m.viewText)
 	m.userText = make([]string, m.textLength)
 	m.currentInputIdx = 0
+	m.cursorIdx = 0
 	m.numAttempts = 0
 	m.totalCorrect = 0
 	m.totalLengthCorrectWords = 0
@@ -194,7 +195,12 @@ func (m *Model) testPageInit() tea.Cmd {
 func (m *Model) getViewText() string {
 	viewText := ""
 	for i := range m.testText {
-		viewText += m.getStyledWord(i) + " "
+		viewText += m.getStyledWord(i)
+		if i == m.currentInputIdx && len(m.userText[i]) >= len(m.testText[i]) {
+			viewText += untypedStyle.Background(lipgloss.Color("15")).Render(" ")
+		} else {
+			viewText += " "
+		}
 	}
 	return viewText
 }
@@ -232,9 +238,7 @@ func (m Model) getStyledWord(index int) string {
 	var longWord string
 	var leftoverStyle lipgloss.Style
 	var underline = false
-	if index < m.currentInputIdx {
-		underline = true
-	}
+	underline = index < m.currentInputIdx
 
 	if len(inputWord) >= len(testWord) {
 		shortWord = testWord
@@ -245,9 +249,10 @@ func (m Model) getStyledWord(index int) string {
 		longWord = testWord
 		leftoverStyle = untypedStyle
 	}
+
 	if shortWord == longWord[:len(shortWord)] {
 		coloredWord += correctStyle.Underline(underline).Render(shortWord)
-	} else { // color individually
+	} else {
 		for i := range shortWord {
 			if testWord[i] == inputWord[i] {
 				coloredWord += correctStyle.Underline(underline).Render(string(testWord[i]))
@@ -256,7 +261,15 @@ func (m Model) getStyledWord(index int) string {
 			}
 		}
 	}
-	coloredWord += leftoverStyle.Underline(underline).Render(longWord[len(shortWord):])
+
+	if index == m.currentInputIdx && shortWord == inputWord {
+		coloredWord += untypedStyle.Background(lipgloss.Color("15")).Render(string(longWord[len(shortWord)]))
+		if len(shortWord) + 1 < len(longWord) {
+			coloredWord += untypedStyle.Render(longWord[len(shortWord) + 1:])
+		}
+	} else {
+		coloredWord += leftoverStyle.Underline(underline).Render(longWord[len(shortWord):])
+	}
 	return coloredWord
 }
 

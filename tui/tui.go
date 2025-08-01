@@ -145,7 +145,7 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 	case " ":
 		if m.currentInputIdx < len(m.testText)-1 {
 			if m.isWordCorrect(m.currentInputIdx) {
-				m.totalLengthCorrectWords += len(m.testText[m.currentInputIdx])
+				m.totalLengthCorrectWords += len(m.testText[m.currentInputIdx]) + 1 // space should be included in character count
 			}
 			m.currentInputIdx++
 			m.currentWordInput.SetValue("")

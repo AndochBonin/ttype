@@ -6,15 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Pallinder/go-randomdata"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
-
-var randomWordFunction = []func() string{randomdata.Noun, randomdata.Adjective, randomdata.Day, randomdata.Month,
-	randomdata.City}
 
 const (
 	testPage = iota
@@ -31,7 +27,7 @@ type Model struct {
 	userText                []string
 	currentWordInput        textinput.Model
 	currentInputIdx         int
-	cursorIdx int
+	cursorIdx               int
 	totalCorrect            int
 	numAttempts             int
 	totalLengthCorrectWords int
@@ -115,12 +111,12 @@ func (m Model) View() string {
 	switch m.page {
 	case testPage:
 		space := "   "
-		stats := headerStyle.Render("wpm: " + fmt.Sprint(m.getSpeed()) + space + "accuracy: " + fmt.Sprint(m.getAccuracy()) + "%" + space +
-			"time remaining: " + m.timer.View()) + "\n\n"
+		stats := headerStyle.Render("wpm: "+fmt.Sprint(m.getSpeed())+space+"accuracy: "+fmt.Sprint(m.getAccuracy())+"%"+space+
+			"time remaining: "+m.timer.View()) + "\n\n"
 		view += stats + fitStyle.Render(m.viewText) + "\n"
 	case resultsPage:
-		view = headerStyle.Render("wpm: " + fmt.Sprint(m.getSpeed())) + "\n\n"
-		view += headerStyle.Render("accuracy: " + fmt.Sprint(m.getAccuracy()) + "%") + "\n\n"
+		view = headerStyle.Render("wpm: "+fmt.Sprint(m.getSpeed())) + "\n\n"
+		view += headerStyle.Render("accuracy: "+fmt.Sprint(m.getAccuracy())+"%") + "\n\n"
 	}
 	return headerStyle.Render(title) + "\n\n" + view
 }
@@ -167,9 +163,9 @@ func (m *Model) testPageInit() tea.Cmd {
 	m.testText = []string{}
 	m.textLength = m.totalTimeSeconds * 4
 	for range m.textLength {
-		randomWord := strings.ToLower(randomWordFunction[rand.Intn(len(randomWordFunction))]())
+		randomWord := strings.ToLower(words[rand.Intn(len(words))])
 		for strings.Contains(randomWord, " ") {
-			randomWord = strings.ToLower(randomWordFunction[rand.Intn(len(randomWordFunction))]())
+			randomWord = strings.ToLower(words[rand.Intn(len(words))])
 		}
 		m.testText = append(m.testText, randomWord)
 	}
@@ -264,8 +260,8 @@ func (m Model) getStyledWord(index int) string {
 
 	if index == m.currentInputIdx && shortWord == inputWord {
 		coloredWord += untypedStyle.Background(lipgloss.Color("15")).Render(string(longWord[len(shortWord)]))
-		if len(shortWord) + 1 < len(longWord) {
-			coloredWord += untypedStyle.Render(longWord[len(shortWord) + 1:])
+		if len(shortWord)+1 < len(longWord) {
+			coloredWord += untypedStyle.Render(longWord[len(shortWord)+1:])
 		}
 	} else {
 		coloredWord += leftoverStyle.Underline(underline).Render(longWord[len(shortWord):])

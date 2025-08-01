@@ -7,7 +7,6 @@ replace github.com/AndochBonin/ttype/tui => ./tui
 require github.com/AndochBonin/ttype/tui v0.0.0-00010101000000-000000000000
 
 require (
-	github.com/Pallinder/go-randomdata v1.2.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/bubbles v0.21.0 // indirect

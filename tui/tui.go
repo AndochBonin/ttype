@@ -164,9 +164,6 @@ func (m *Model) testPageInit() tea.Cmd {
 	m.textLength = m.totalTimeSeconds * 4
 	for range m.textLength {
 		randomWord := strings.ToLower(words[rand.Intn(len(words))])
-		for strings.Contains(randomWord, " ") {
-			randomWord = strings.ToLower(words[rand.Intn(len(words))])
-		}
 		m.testText = append(m.testText, randomWord)
 	}
 

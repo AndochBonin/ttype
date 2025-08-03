@@ -51,7 +51,9 @@ func initialModel(testDurationSeconds int) (Model, error) {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(tea.SetWindowTitle("ttype"), m.timer.Init())
+	init := m.timer.Init()
+	stop := m.timer.Stop()
+	return tea.Batch(tea.SetWindowTitle("ttype"), init, stop)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -156,7 +158,12 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 	if msg != "backspace" {
 		m.updateAccuracystats()
 	}
-	return m, nil
+
+	var cmd tea.Cmd
+	if !m.timer.Running() {
+		cmd = m.timer.Start()
+	}
+	return m, cmd
 }
 
 func (m *Model) testPageInit() tea.Cmd {
@@ -190,7 +197,9 @@ func (m *Model) testPageInit() tea.Cmd {
 	m.totalLengthCorrectWords = 0
 	m.timer = timer.New(time.Second * time.Duration(m.totalTimeSeconds))
 	m.currentWordInput = textinput.New()
-	return tea.Batch(m.currentWordInput.Focus(), m.timer.Init())
+	init := m.timer.Init()
+	stop := m.timer.Stop()
+	return tea.Batch(m.currentWordInput.Focus(), init, stop)
 }
 
 func (m *Model) getViewText() string {

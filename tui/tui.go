@@ -162,8 +162,16 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 func (m *Model) testPageInit() tea.Cmd {
 	m.testText = []string{}
 	m.textLength = m.totalTimeSeconds * 4
+	getWord := func () string {
+		return strings.ToLower(words[rand.Intn(len(words))])
+	}
+
 	for range m.textLength {
-		randomWord := strings.ToLower(words[rand.Intn(len(words))])
+		var randomWord string
+
+		for randomWord = getWord(); len(m.testText) > 0 && randomWord == m.testText[len(m.testText) - 1];{
+			randomWord = getWord()
+		}
 		m.testText = append(m.testText, randomWord)
 	}
 

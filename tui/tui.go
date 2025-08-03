@@ -39,7 +39,6 @@ var (
 	untypedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	correctStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	wrongStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	fitStyle     = lipgloss.NewStyle().Width(100)
 	headerStyle  = lipgloss.NewStyle().Bold(true)
 )
 
@@ -108,6 +107,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) View() string {
 	title := "ttype"
 	var view string
+	fitStyle := lipgloss.NewStyle().Width(int(float64(m.width) * float64(0.8)))
 	switch m.page {
 	case testPage:
 		space := "   "
@@ -118,7 +118,7 @@ func (m Model) View() string {
 		view = headerStyle.Render("wpm: "+fmt.Sprint(m.getSpeed())) + "\n\n"
 		view += headerStyle.Render("accuracy: "+fmt.Sprint(m.getAccuracy())+"%") + "\n\n"
 	}
-	return headerStyle.Render(title) + "\n\n" + view
+	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, headerStyle.Render(title) + "\n\n" + view)
 }
 
 func Run(testDurationSeconds int) error {

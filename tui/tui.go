@@ -94,7 +94,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
-			case "esc":
+			case "esc", "tab":
 				m.viewText = ""
 				m.page = testPage
 				return m, m.testPageInit()
@@ -135,7 +135,7 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 	switch msg {
 	case "ctrl+c":
 		return m, tea.Quit
-	case "tab":
+	case "esc", "tab":
 		return m, m.testPageInit()
 	case "backspace":
 		if m.canEditPreviousWord() {

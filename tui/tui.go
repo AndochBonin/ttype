@@ -32,15 +32,15 @@ type Model struct {
 	totalLengthCorrectWords int
 	totalTimeSeconds        int
 	timer                   timer.Model
-	testStarted bool
+	testStarted             bool
 }
 
 var (
-	untypedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	correctStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	wrongStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	untypedStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	correctStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	wrongStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 	cursorLetterStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("16")).Background(lipgloss.Color("15")).Bold(true)
-	headerStyle  = lipgloss.NewStyle().Bold(true)
+	headerStyle       = lipgloss.NewStyle().Bold(true)
 )
 
 func initialModel(testDurationSeconds int) (Model, error) {
@@ -118,7 +118,7 @@ func (m Model) View() string {
 		view = headerStyle.Render("wpm: "+fmt.Sprint(m.getSpeed())) + "\n\n"
 		view += headerStyle.Render("accuracy: "+fmt.Sprint(m.getAccuracy())+"%") + "\n\n"
 	}
-	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, headerStyle.Render(title) + "\n\n" + view)
+	return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, headerStyle.Render(title)+"\n\n"+view)
 }
 
 func Run(testDurationSeconds int) error {
@@ -167,14 +167,14 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 func (m *Model) testPageInit() tea.Cmd {
 	m.testText = []string{}
 	m.textLength = m.totalTimeSeconds * 4
-	getWord := func () string {
+	getWord := func() string {
 		return strings.ToLower(words[rand.Intn(len(words))])
 	}
 
 	for range m.textLength {
 		var randomWord string
 
-		for randomWord = getWord(); len(m.testText) > 0 && randomWord == m.testText[len(m.testText) - 1];{
+		for randomWord = getWord(); len(m.testText) > 0 && randomWord == m.testText[len(m.testText)-1]; {
 			randomWord = getWord()
 		}
 		m.testText = append(m.testText, randomWord)
@@ -230,7 +230,12 @@ func (m Model) getSpeed() int {
 	if inputWordLength <= testWordLength && m.testText[m.currentInputIdx][:inputWordLength] == m.userText[m.currentInputIdx] {
 		currentCorrectWordLength = inputWordLength
 	}
-	return ((m.totalLengthCorrectWords + currentCorrectWordLength) / 5) * (60 / secondsPassed)
+
+	correctChars := m.totalLengthCorrectWords + currentCorrectWordLength
+	wordsTyped := float64(correctChars) / 5.0
+	minutesPassed := float64(secondsPassed) / 60.0
+	wpm := wordsTyped / minutesPassed
+	return int(wpm)
 }
 
 func (m Model) getStyledWord(index int) string {

@@ -33,6 +33,7 @@ type Model struct {
 	totalLengthCorrectWords int
 	totalTimeSeconds        int
 	timer                   timer.Model
+	testStarted bool
 }
 
 var (
@@ -51,9 +52,7 @@ func initialModel(testDurationSeconds int) (Model, error) {
 }
 
 func (m Model) Init() tea.Cmd {
-	init := m.timer.Init()
-	stop := m.timer.Stop()
-	return tea.Batch(tea.SetWindowTitle("ttype"), init, stop)
+	return tea.SetWindowTitle("ttype")
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -160,8 +159,9 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 	}
 
 	var cmd tea.Cmd
-	if !m.timer.Running() {
-		cmd = m.timer.Start()
+	if !m.testStarted {
+		m.testStarted = true
+		cmd = m.timer.Init()
 	}
 	return m, cmd
 }
@@ -196,10 +196,9 @@ func (m *Model) testPageInit() tea.Cmd {
 	m.totalCorrect = 0
 	m.totalLengthCorrectWords = 0
 	m.timer = timer.New(time.Second * time.Duration(m.totalTimeSeconds))
+	m.testStarted = false
 	m.currentWordInput = textinput.New()
-	init := m.timer.Init()
-	stop := m.timer.Stop()
-	return tea.Batch(m.currentWordInput.Focus(), init, stop)
+	return m.currentWordInput.Focus()
 }
 
 func (m *Model) getViewText() string {

@@ -39,6 +39,7 @@ var (
 	untypedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	correctStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	wrongStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	cursorLetterStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("16")).Background(lipgloss.Color("15")).Bold(true)
 	headerStyle  = lipgloss.NewStyle().Bold(true)
 )
 
@@ -269,7 +270,7 @@ func (m Model) getStyledWord(index int) string {
 	}
 
 	if index == m.currentInputIdx && shortWord == inputWord {
-		coloredWord += untypedStyle.Background(lipgloss.Color("15")).Render(string(longWord[len(shortWord)]))
+		coloredWord += cursorLetterStyle.Render(string(longWord[len(shortWord)]))
 		if len(shortWord)+1 < len(longWord) {
 			coloredWord += untypedStyle.Render(longWord[len(shortWord)+1:])
 		}

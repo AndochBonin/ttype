@@ -27,7 +27,6 @@ type Model struct {
 	userText                []string
 	currentWordInput        textinput.Model
 	currentInputIdx         int
-	cursorIdx               int
 	totalCorrect            int
 	numAttempts             int
 	totalLengthCorrectWords int
@@ -71,7 +70,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentWordInput, inputCmd = m.currentWordInput.Update(msg)
 			}
 			m, keyCmd = m.testPageKeyHandler(msg.String())
-			m.viewText = m.getViewText()
 		case timer.TickMsg:
 			var timerCmd tea.Cmd
 			m.timer, timerCmd = m.timer.Update(msg)
@@ -85,7 +83,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case timer.TimeoutMsg:
 			m.page = resultsPage
 			m.currentWordInput.Blur()
-			m.viewText = m.getViewText()
 			return m, nil
 		}
 	case resultsPage:
@@ -101,6 +98,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	m.viewText = m.getViewText()
 	cmds = append(cmds, cmd, keyCmd, inputCmd)
 	return m, tea.Batch(cmds...)
 }
@@ -153,7 +151,6 @@ func (m Model) testPageKeyHandler(msg string) (Model, tea.Cmd) {
 		}
 	}
 	m.userText[m.currentInputIdx] = m.currentWordInput.Value()
-	m.cursorIdx = len(m.userText[m.currentInputIdx])
 	if msg != "backspace" {
 		m.updateAccuracystats()
 	}
@@ -191,17 +188,17 @@ func (m *Model) testPageInit() tea.Cmd {
 	m.viewText = untypedStyle.Render(m.viewText)
 	m.userText = make([]string, m.textLength)
 	m.currentInputIdx = 0
-	m.cursorIdx = 0
 	m.numAttempts = 0
 	m.totalCorrect = 0
 	m.totalLengthCorrectWords = 0
 	m.timer = timer.New(time.Second * time.Duration(m.totalTimeSeconds))
 	m.testStarted = false
 	m.currentWordInput = textinput.New()
+	m.viewText = m.getViewText()
 	return m.currentWordInput.Focus()
 }
 
-func (m *Model) getViewText() string {
+func (m Model) getViewText() string {
 	viewText := ""
 	for i := range m.testText {
 		viewText += m.getStyledWord(i)
